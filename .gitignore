@@ -1,0 +1,100 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+taskS3
+bin/
+dist/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+node_modules/
+
+# Go module files (but keep go.mod and go.sum)
+# go.sum is committed, go.mod is committed
+
+# Local configuration files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Uploads directory (user uploaded files)
+uploads/
+!uploads/.gitkeep
+
+# Test output
+coverage.txt
+coverage.html
+profile.out
+
+# Build cache
+/.cache/
+
+# MinIO data
+minio_data/
+
+# Docker
+docker-compose.override.yml
+
+# Temporary files
+tmp/
+temp/
+
+# Development artifacts
+*.pprof
+*.prof
+
+# Project specific
+# Exclude compiled binary but keep source
+cmd/app/main
+
+# Backup files
+*.bak
+*.backup
+
+# Secrets
+secrets.yaml
+config.local.yaml
+*.pem
+*.key
+*.crt
+
+# Docker ignore patterns for build context
+.dockerignore
+
+# Go test cache
+/.go-test-cache/
+
+# Environment specific
+.config/
+.cache/
