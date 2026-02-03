@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -20,51 +21,57 @@ type Server struct {
 	log        *zap.Logger
 }
 
-func New(cfg *config.Config, log *zap.Logger) *Server {
-	router := gin.Default()
+func New(cfg *config.Config, log *zap.Logger) (*Server, error) {
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	router.Use(gin.Recovery())
 
-	// Настройка шаблонов
 	router.LoadHTMLGlob("web/templates/*")
 
-	// Инициализация репозитория
 	s3Repo, err := repository.NewS3Repository(&cfg.S3, log)
 	if err != nil {
-		log.Fatal("Failed to create S3 repository", zap.Error(err))
+		return nil, fmt.Errorf("failed to create S3 repository: %w", err)
 	}
 
-	// Инициализация сервиса
 	imageService := service.NewImageService(s3Repo, cfg, log)
 
-	// Инициализация хендлера
-	h := handler.NewHandler(imageService, log)
+	h := handler.NewHandler(imageService, cfg, log)
 
-	// Настройка маршрутов
 	router.GET("/", h.GetUI)
 	router.GET("/health", h.HealthCheck)
-	router.POST("/api/upload", h.UploadImage)
-	router.POST("/api/process", h.ProcessImages)
-	router.POST("/api/move", h.MoveImages)
-	router.GET("/api/images", h.ListImages)
 
-	// Статические файлы
+	api := router.Group("/api")
+	{
+		api.POST("/upload", h.UploadImage)
+		api.POST("/process", h.ProcessImages)
+		api.POST("/move", h.MoveImages)
+		api.GET("/images", h.ListImages)
+	}
+
 	router.Static("/static", "./web/static")
 	router.Static("/uploads", "./uploads")
 
-	return &Server{
+	server := &Server{
 		httpServer: &http.Server{
 			Addr:           cfg.Server.Host + ":" + cfg.Server.Port,
 			Handler:        router,
 			ReadTimeout:    10 * time.Second,
 			WriteTimeout:   10 * time.Second,
-			MaxHeaderBytes: 1 << 20,
+			MaxHeaderBytes: 1 << 20, // 1 MB
 		},
 		cfg: cfg,
 		log: log,
 	}
+
+	log.Info("Server created successfully",
+		zap.String("host", cfg.Server.Host),
+		zap.String("port", cfg.Server.Port))
+
+	return server, nil
 }
 
 func (s *Server) Run() error {
-	s.log.Info("Starting server",
+	s.log.Info("Server is running",
 		zap.String("host", s.cfg.Server.Host),
 		zap.String("port", s.cfg.Server.Port),
 		zap.String("address", s.httpServer.Addr))

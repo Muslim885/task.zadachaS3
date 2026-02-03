@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -72,7 +73,7 @@ func Load() (*Config, error) {
 	}
 
 	if err := createDirs(cfg); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create directories: %w", err)
 	}
 
 	return cfg, nil
@@ -87,7 +88,7 @@ func createDirs(cfg *Config) error {
 
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, 0755); err != nil {
-			return err
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
 	}
 

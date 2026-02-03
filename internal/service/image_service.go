@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -49,7 +50,7 @@ func (s *imageService) UploadImage(ctx context.Context, fileBytes []byte, filena
 	reader := bytes.NewReader(fileBytes)
 
 	if err := s.s3Repo.UploadFile(ctx, key, reader, int64(len(fileBytes)), contentType); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to upload image to S3: %w", err)
 	}
 
 	image := &domain.Image{
@@ -74,15 +75,13 @@ func (s *imageService) ProcessLocalImages(ctx context.Context) error {
 	s.log.Info("Starting local image processing",
 		zap.String("upload_dir", s.cfg.App.UploadDir))
 
-	// Обработка и сжатие локальных изображений
 	if err := s.proc.ProcessLocalImages(s.cfg.App.UploadDir, s.cfg.App.ProcessedDir, 80); err != nil {
-		return err
+		return fmt.Errorf("failed to process local images: %w", err)
 	}
 
-	// Загрузка обработанных изображений в S3
 	entries, err := os.ReadDir(s.cfg.App.ProcessedDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read processed directory: %w", err)
 	}
 
 	for _, entry := range entries {
@@ -117,20 +116,17 @@ func (s *imageService) ProcessLocalImages(ctx context.Context) error {
 func (s *imageService) ProcessAndMoveImages(ctx context.Context) error {
 	s.log.Info("Starting image processing and moving")
 
-	// Получение списка файлов из S3
 	keys, err := s.s3Repo.ListFiles(ctx, "images/")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list files from S3: %w", err)
 	}
 
-	// Создание директории для перемещенных файлов
 	movedDir := filepath.Join(s.cfg.App.ProcessedDir, "moved")
 	if err := os.MkdirAll(movedDir, 0755); err != nil {
-		return err
+		return fmt.Errorf("failed to create moved directory: %w", err)
 	}
 
 	for _, key := range keys {
-		// Скачивание файла
 		reader, err := s.s3Repo.DownloadFile(ctx, key)
 		if err != nil {
 			s.log.Error("Failed to download file",
@@ -139,7 +135,6 @@ func (s *imageService) ProcessAndMoveImages(ctx context.Context) error {
 			continue
 		}
 
-		// Сохранение локально
 		filename := filepath.Base(key)
 		destPath := filepath.Join(movedDir, filename)
 
@@ -165,7 +160,6 @@ func (s *imageService) ProcessAndMoveImages(ctx context.Context) error {
 		reader.Close()
 		file.Close()
 
-		// Копирование в другую папку S3
 		newKey := "processed/" + filename
 		if err := s.s3Repo.CopyFile(ctx, key, newKey); err != nil {
 			s.log.Error("Failed to copy file in S3",
@@ -187,7 +181,7 @@ func (s *imageService) ProcessAndMoveImages(ctx context.Context) error {
 func (s *imageService) ListImages(ctx context.Context) ([]domain.Image, error) {
 	keys, err := s.s3Repo.ListFiles(ctx, "images/")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list images from S3: %w", err)
 	}
 
 	var images []domain.Image
@@ -201,7 +195,6 @@ func (s *imageService) ListImages(ctx context.Context) ([]domain.Image, error) {
 			Processed:    false,
 		}
 
-		// Определяем content type по расширению
 		ext := filepath.Ext(key)
 		if ext == ".png" {
 			image.ContentType = "image/png"

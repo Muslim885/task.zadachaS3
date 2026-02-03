@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
@@ -29,16 +30,17 @@ type s3Repository struct {
 }
 
 func NewS3Repository(cfg *s3config.S3Config, log *zap.Logger) (S3Repository, error) {
-	customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-		if cfg.Endpoint != "" {
-			return aws.Endpoint{
-				URL:               cfg.Endpoint,
-				HostnameImmutable: true,
-				Source:            aws.EndpointSourceCustom,
-			}, nil
-		}
-		return aws.Endpoint{}, &aws.EndpointNotFoundError{}
-	})
+	customResolver := aws.EndpointResolverWithOptions(aws.EndpointResolverWithOptionsFunc(
+		func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+			if cfg.Endpoint != "" {
+				return aws.Endpoint{
+					URL:               cfg.Endpoint,
+					HostnameImmutable: true,
+					Source:            aws.EndpointSourceCustom,
+				}, nil
+			}
+			return aws.Endpoint{}, &aws.EndpointNotFoundError{}
+		}))
 
 	awsCfg, err := config.LoadDefaultConfig(context.Background(),
 		config.WithEndpointResolverWithOptions(customResolver),
@@ -50,7 +52,7 @@ func NewS3Repository(cfg *s3config.S3Config, log *zap.Logger) (S3Repository, err
 		config.WithRegion(cfg.Region),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
 	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
@@ -63,16 +65,14 @@ func NewS3Repository(cfg *s3config.S3Config, log *zap.Logger) (S3Repository, err
 		log:    log,
 	}
 
-	// Проверяем и создаем bucket если нужно
 	if err := repo.ensureBucketExists(context.Background()); err != nil {
-		log.Warn("Failed to ensure bucket exists", zap.Error(err))
+		return nil, fmt.Errorf("failed to ensure bucket exists: %w", err)
 	}
 
 	return repo, nil
 }
 
 func (r *s3Repository) ensureBucketExists(ctx context.Context) error {
-	// Проверяем существование bucket
 	_, err := r.client.HeadBucket(ctx, &s3.HeadBucketInput{
 		Bucket: aws.String(r.cfg.BucketName),
 	})
@@ -82,7 +82,6 @@ func (r *s3Repository) ensureBucketExists(ctx context.Context) error {
 		return nil
 	}
 
-	// Создаем bucket
 	r.log.Info("Creating bucket", zap.String("bucket", r.cfg.BucketName))
 
 	_, err = r.client.CreateBucket(ctx, &s3.CreateBucketInput{
@@ -93,12 +92,11 @@ func (r *s3Repository) ensureBucketExists(ctx context.Context) error {
 	})
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create bucket %s: %w", r.cfg.BucketName, err)
 	}
 
 	r.log.Info("Bucket created successfully", zap.String("bucket", r.cfg.BucketName))
 
-	// Даем время на создание
 	time.Sleep(1 * time.Second)
 
 	return nil
@@ -114,10 +112,7 @@ func (r *s3Repository) UploadFile(ctx context.Context, key string, body io.Reade
 	})
 
 	if err != nil {
-		r.log.Error("Failed to upload file to S3",
-			zap.String("key", key),
-			zap.Error(err))
-		return err
+		return fmt.Errorf("failed to upload file %s to S3: %w", key, err)
 	}
 
 	r.log.Info("File uploaded to S3",
@@ -134,10 +129,7 @@ func (r *s3Repository) DownloadFile(ctx context.Context, key string) (io.ReadClo
 	})
 
 	if err != nil {
-		r.log.Error("Failed to download file from S3",
-			zap.String("key", key),
-			zap.Error(err))
-		return nil, err
+		return nil, fmt.Errorf("failed to download file %s from S3: %w", key, err)
 	}
 
 	return output.Body, nil
@@ -150,7 +142,7 @@ func (r *s3Repository) ListFiles(ctx context.Context, prefix string) ([]string, 
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list files with prefix %s: %w", prefix, err)
 	}
 
 	var keys []string
@@ -169,11 +161,7 @@ func (r *s3Repository) CopyFile(ctx context.Context, sourceKey, destKey string) 
 	})
 
 	if err != nil {
-		r.log.Error("Failed to copy file in S3",
-			zap.String("source", sourceKey),
-			zap.String("destination", destKey),
-			zap.Error(err))
-		return err
+		return fmt.Errorf("failed to copy file from %s to %s in S3: %w", sourceKey, destKey, err)
 	}
 
 	r.log.Info("File copied in S3",
